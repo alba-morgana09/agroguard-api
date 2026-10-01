@@ -96,8 +96,7 @@ export default function DashboardIntegridade() {
     <div style={{ backgroundColor: '#090d16', color: '#e2e8f0', minHeight: '100vh', padding: '24px', fontFamily: 'Segoe UI, Roboto, sans-serif', boxSizing: 'border-box' }}>
       <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
         
-        {/* HEADER */}
-        <header style={{ display: 'flex', justifyBetween: 'space-between', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '16px', marginBottom: '20px', borderBottom: '1px solid #1e293b' }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '16px', marginBottom: '20px', borderBottom: '1px solid #1e293b' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#10b981', boxShadow: '0 0 10px #10b981' }}></div>
             <h1 style={{ margin: 0, fontSize: '18px', fontFamily: 'monospace', fontWeight: 'bold', color: '#00f2fe', letterSpacing: '1px' }}>
