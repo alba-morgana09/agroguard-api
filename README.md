@@ -1,44 +1,87 @@
-# 🌾 AgroGuard — Proteção e Monitoramento de Cargas em Tempo Real
+# 🌾 AgroGuard — Protótipo de Monitoramento de Cargas
 
-> Uma plataforma intuitiva criada para acompanhar o transporte de mercadorias valiosas e sensíveis (como remédios e alimentos), garantindo segurança do início ao fim da rota.
+> Dashboard frontend visual para apresentar o monitoramento de cargas sensíveis. O projeto é um protótipo construído com React, TypeScript e Vite, com dados simulados; **não é uma API** e não possui integração com sensores, GPS ou banco de dados.
 
----
-
-## 📸 Como a Plataforma Funciona
+## 📸 Demo
 
 ![Painel do AgroGuard](./agroguard-preview.png)
 
-👉 **[Clique aqui para testar o sistema ao vivo no seu navegador!](https://alba-morgana09.github.io/agroguard-api/)**
+👉 **[Acessar a demo no GitHub Pages](https://alba-morgana09.github.io/agroguard-api/)**
 
----
+## 🎯 Sobre o projeto
 
-## 🎯 Para que serve o AgroGuard?
+O dashboard representa uma central de acompanhamento de uma carga farmacêutica termossensível. A interface exibe informações como temperatura, umidade, status do lacre, desvio de rota e eventos de auditoria.
 
-Imagine que uma empresa precisa transportar um caminhão cheio de vacinas ou remédios caros de um estado para outro. Se a temperatura subir ou se alguém tentar abrir o caminhão no caminho, a carga pode ser perdida.
+Essas informações são demonstrativas e estão definidas no próprio frontend. O projeto não recebe dados externos nem envia requisições para uma API.
 
-O **AgroGuard** resolve esse problema ao funcionar como um **painel de controle central** que avisa em tempo real:
+## 💻 Tecnologias
 
-* 🌡️ **Se a temperatura está correta:** Garante que a carga não estrague.
-* 🔒 **Se o lacre está fechado:** Alerta imediatamente em caso de tentativa de violação.
-* 📍 **Se o veículo está no trajeto certo:** Acompanha o deslocamento por GPS.
-* 📑 **Emissão de Certificados:** Confirma que a entrega seguiu todas as regras de segurança.
+- React
+- TypeScript
+- Vite
+- React DOM
+- CSS e estilos inline
+- GitHub Pages para publicação da demo
 
----
+## 🚀 Como executar
 
-## 💻 Tecnologias do Projeto
+Requisitos: Node.js e npm.
 
-Para quem é da área de tecnologia, este projeto foi desenvolvido utilizando:
+```bash
+npm ci
+npm run dev
+```
 
-* **React + TypeScript:** Para criar uma interface rápida, moderna e segura.
-* **Tailwind CSS:** Para o visual estilizado no formato de centro de operações.
-* **GitHub Pages:** Para manter o sistema rodando online de forma contínua.
+Para gerar o build de produção:
 
----
+```bash
+npm run build
+```
 
-## ✍️ Autoria e Direitos
+Para visualizar localmente o build gerado:
 
-Desenvolvido por **Alba Morgana dos Santos Benicio**.  
-Projeto protegido sob a **Licença MIT**.
+```bash
+npm run preview
+```
 
-* **Perfil no GitHub:** [@alba-morgana09](https://github.com/alba-morgana09)
-* **LinkedIn:** [Perfil Profissional](https://www.linkedin.com/in/albamorgana/)
+## 📁 Estrutura principal
+
+```text
+.
+├── public/                 # Arquivos públicos e ícones
+├── src/
+│   ├── assets/             # Imagens e SVGs
+│   ├── App.tsx             # Componente raiz
+│   ├── DashboardIntegridade.tsx
+│   ├── App.css
+│   ├── index.css
+│   └── main.tsx            # Inicialização do React
+├── .github/workflows/
+│   └── deploy.yml          # Build e publicação no GitHub Pages
+├── index.html
+├── package.json
+└── vite.config.ts
+```
+
+## ✅ Implementado
+
+- Dashboard visual de monitoramento de cargas.
+- Exibição de dados estáticos de temperatura, umidade, GPS, rota e auditoria.
+- Relógio atualizado no frontend.
+- Simulação de abertura e bloqueio do lacre.
+- Micrográficos SVG para os indicadores exibidos.
+- Build e publicação no GitHub Pages.
+
+## 🗺️ Planejado
+
+- Integração com o repositório [`agroguard`](https://github.com/alba-morgana09/agroguard).
+- Carregamento de logs por API.
+- Testes automatizados do frontend.
+- Melhorias de responsividade para diferentes tamanhos de tela.
+
+## ✍️ Autoria
+
+Desenvolvido por **Alba Morgana dos Santos Benicio**.
+
+- [Perfil no GitHub](https://github.com/alba-morgana09)
+- [LinkedIn](https://www.linkedin.com/in/albamorgana/)
