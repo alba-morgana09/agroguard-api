@@ -1,4 +1,25 @@
-# 🌾 AgroGuard — Protótipo de Monitoramento de Cargas
+# 🌾 AgroGuard Dashboard
+
+## Descrição do card
+
+### PT
+
+Demo interativa de monitoramento de cargas sensíveis, com simulação de cenários
+(falha de refrigeração, lacre violado, desvio de rota) e trilha de auditoria com
+hash SHA-256 encadeado calculado no navegador. Os dados exibidos são simulados.
+
+### EN
+
+Interactive demo for monitoring sensitive cargo, with simulated scenarios
+(refrigeration failure, seal breach, route deviation) and an audit trail with a
+chained SHA-256 hash calculated in the browser. The displayed data is simulated.
+
+### ES
+
+Demo interactiva para monitorear cargas sensibles, con simulación de escenarios
+(fallo de refrigeración, precinto violado, desvío de ruta) y una pista de
+auditoría con hash SHA-256 encadenado calculado en el navegador. Los datos
+mostrados son simulados.
 
 > Dashboard frontend visual para apresentar o monitoramento de cargas sensíveis. O projeto é construído com React, TypeScript e Vite. Pode consultar a API do AgroGuard ou funcionar em modo demonstração com dados simulados.
 
