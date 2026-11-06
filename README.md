@@ -2,9 +2,9 @@
 
 > Dashboard frontend visual para apresentar o monitoramento de cargas sensíveis. O projeto é construído com React, TypeScript e Vite. Pode consultar a API do AgroGuard ou funcionar em modo demonstração com dados simulados.
 
-## 📸 Demo
+## 📸 Demo                                                                                                                                  
 
-    ![Painel do AgroGuard em modo demonstração](./agroguard-preview.gif)
+![Painel do AgroGuard em modo demonstração](./agroguard-preview.gif)
 
 👉 **[Acessar a demo no GitHub Pages](https://alba-morgana09.github.io/agroguard-api/)**
 
