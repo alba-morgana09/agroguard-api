@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  criarRegistro,
   gerarCadeia,
   verificarCadeia,
   type EventoAuditoria,
@@ -31,7 +32,7 @@ interface SecurityLog {
   id: string;
   timestamp: string;
   eventType: string;
-  status: 'NORMAL' | 'ATENÇÃO' | 'CRÍTICO';
+  status: string;
   hash: string;
   hashAnterior?: string;
 }
@@ -49,6 +50,17 @@ interface DemoCarga {
   telemetria: Telemetria;
   eventos: EventoAuditoria[];
   faixa: string;
+}
+
+type Situacao = 'Íntegra' | 'Atenção' | 'Em risco';
+
+interface DemoRuntime {
+  telemetria: Telemetria;
+  statusLacre: string;
+  situacao: Situacao;
+  alerta: string | null;
+  temperaturas: number[];
+  umidades: number[];
 }
 
 const demoCargas: DemoCarga[] = [
@@ -132,17 +144,27 @@ function converterLogs(logs: Array<RegistroAuditoria | LogApi>): SecurityLog[] {
     id: String(log.id),
     timestamp: formatarData(log.timestamp),
     eventType: log.evento,
-    status: ('status' in log ? log.status : 'NORMAL') as SecurityLog['status'],
+    status: 'status' in log ? log.status : 'NORMAL',
     hash: log.hash,
     hashAnterior: log.hashAnterior,
   }));
 }
 
-function MiniGraph({ data, color }: { data: number[]; color: string }) {
+function MiniGraph({
+  data,
+  color,
+  safeMin,
+  safeMax,
+}: {
+  data: number[];
+  color: string;
+  safeMin?: number;
+  safeMax?: number;
+}) {
   const min = Math.min(...data);
   const max = Math.max(...data) || 1;
   const points = data.map((value, index) => {
-    const x = (index / (data.length - 1)) * 200;
+    const x = (index / Math.max(data.length - 1, 1)) * 200;
     const y = 30 - ((value - min) / (max - min || 1)) * 24 - 3;
     return `${x},${y}`;
   }).join(' ');
@@ -150,11 +172,33 @@ function MiniGraph({ data, color }: { data: number[]; color: string }) {
   return (
     <div style={{ width: '100%', height: '30px', overflow: 'hidden', marginTop: '8px' }}>
       <svg width="100%" height="30" viewBox="0 0 200 30" preserveAspectRatio="none">
+        {safeMin !== undefined && safeMax !== undefined && (
+          <>
+            <line x1="0" x2="200" y1={30 - ((safeMin - min) / (max - min || 1)) * 24 - 3} y2={30 - ((safeMin - min) / (max - min || 1)) * 24 - 3} stroke="#34d399" strokeDasharray="4 3" />
+            <line x1="0" x2="200" y1={30 - ((safeMax - min) / (max - min || 1)) * 24 - 3} y2={30 - ((safeMax - min) / (max - min || 1)) * 24 - 3} stroke="#34d399" strokeDasharray="4 3" />
+          </>
+        )}
         <polyline fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" points={points} />
+        {data.map((value, index) => {
+          const x = (index / Math.max(data.length - 1, 1)) * 200;
+          const y = 30 - ((value - min) / (max - min || 1)) * 24 - 3;
+          const foraDaFaixa = (safeMin !== undefined && value < safeMin) || (safeMax !== undefined && value > safeMax);
+          return <circle key={`${index}-${value}`} cx={x} cy={y} r="2.5" fill={foraDaFaixa ? '#f43f5e' : color} />;
+        })}
       </svg>
     </div>
   );
 }
+
+const buttonStyle = {
+  background: '#111827',
+  color: '#e2e8f0',
+  border: '1px solid',
+  padding: '8px 10px',
+  borderRadius: '5px',
+  fontSize: '11px',
+  cursor: 'pointer',
+};
 
 export default function DashboardIntegridade() {
   const [currentTime, setCurrentTime] = useState('');
@@ -166,20 +210,108 @@ export default function DashboardIntegridade() {
   const [chainResult, setChainResult] = useState<{ integra: boolean; primeiroInvalido: number | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [demoCadeias, setDemoCadeias] = useState<Record<string, RegistroAuditoria[]>>({});
+  const [demoRuntime, setDemoRuntime] = useState<Record<string, DemoRuntime>>({});
 
   const carga = useMemo(
     () => cargas.find((item) => item.id === selectedId) ?? cargas[0],
     [cargas, selectedId],
   );
   const demo = demoCargas.find((item) => item.carga.id === selectedId) ?? demoCargas[0];
-  const doorLocked = carga?.statusLacre !== 'ABERTO';
+  const runtime = demoRuntime[selectedId];
+  const doorLocked = carga?.statusLacre !== 'ABERTO' && carga?.statusLacre !== 'VIOLADO';
+  const situacao: Situacao | null = connected
+    ? (chainResult?.integra ? 'Íntegra' : 'Em risco')
+    : (runtime?.situacao ?? null);
+  const situacaoCor = situacao === 'Em risco' ? '#f43f5e' : situacao === 'Atenção' ? '#fbbf24' : '#10b981';
 
   async function aplicarDemo(id: string) {
     const selecionada = demoCargas.find((item) => item.carga.id === id) ?? demoCargas[0];
     const cadeia = demoCadeias[selecionada.carga.id] ?? [];
-    setTelemetria({ ...selecionada.telemetria, timestamp: new Date().toISOString() });
-    setLogs(converterLogs(cadeia));
+    const estado = demoRuntime[selecionada.carga.id];
+    setTelemetria(estado?.telemetria ?? { ...selecionada.telemetria, timestamp: new Date().toISOString() });
+    setLogs(converterLogs([...cadeia].reverse()));
     setChainResult(await verificarCadeia(cadeia));
+  }
+
+  async function registrarEventoDemo(
+    evento: string,
+    status: Situacao,
+    atualizar: (atual: DemoRuntime) => DemoRuntime,
+  ) {
+    if (connected || !runtime) return;
+    const cadeiaAtual = demoCadeias[selectedId] ?? [];
+    const proximoId = (cadeiaAtual.at(-1)?.id ?? 0) + 1;
+    const registro = await criarRegistro({
+      id: proximoId,
+      timestamp: new Date().toISOString(),
+      evento,
+      status,
+    }, cadeiaAtual.at(-1)?.hash ?? '0'.repeat(64));
+    const novaCadeia = [...cadeiaAtual, registro];
+    const novoRuntime = atualizar(runtime);
+    setDemoCadeias((atual) => ({ ...atual, [selectedId]: novaCadeia }));
+    setDemoRuntime((atual) => ({ ...atual, [selectedId]: novoRuntime }));
+    setCargas((atual) => atual.map((item) => item.id === selectedId
+      ? { ...item, statusLacre: novoRuntime.statusLacre }
+      : item));
+    setTelemetria(novoRuntime.telemetria);
+    setLogs(converterLogs([registro, ...[...cadeiaAtual].reverse()]));
+    setChainResult(await verificarCadeia(novaCadeia));
+  }
+
+  async function simularRefrigerador() {
+    if (!runtime || connected) return;
+    const proximaTemperatura = runtime.telemetria.temperatura + 1.5;
+    const limite = selectedId === 'DEMO-002' ? 4 : 8;
+    const situacao: Situacao = selectedId === 'DEMO-003'
+      ? (runtime.temperaturas.length > 1 ? 'Em risco' : 'Atenção')
+      : (proximaTemperatura > limite ? 'Em risco' : 'Atenção');
+    await registrarEventoDemo(
+      'Refrigerador falhou',
+      situacao,
+      (atual) => ({
+        ...atual,
+        situacao,
+        alerta: proximaTemperatura > limite
+          ? 'Alerta: temperatura acima da faixa segura.'
+          : 'Atenção: temperatura subindo.',
+        telemetria: { ...atual.telemetria, temperatura: proximaTemperatura, timestamp: new Date().toISOString() },
+        temperaturas: [...atual.temperaturas, proximaTemperatura],
+      }),
+    );
+  }
+
+  async function simularLacreViolado() {
+    await registrarEventoDemo('Lacre violado', 'Em risco', (atual) => ({
+      ...atual,
+      statusLacre: 'VIOLADO',
+      situacao: 'Em risco',
+      alerta: 'Alerta: o lacre foi violado.',
+    }));
+  }
+
+  async function simularDesvio() {
+    await registrarEventoDemo('Desvio de rota detectado', 'Em risco', (atual) => ({
+      ...atual,
+      situacao: 'Em risco',
+      alerta: 'Alerta: a carga saiu da rota planejada.',
+      telemetria: { ...atual.telemetria, latitude: atual.telemetria.latitude + 0.18, longitude: atual.telemetria.longitude + 0.22, timestamp: new Date().toISOString() },
+    }));
+  }
+
+  async function voltarAoNormal() {
+    if (!runtime || connected) return;
+    const original = demoCargas.find((item) => item.carga.id === selectedId);
+    if (!original) return;
+    await registrarEventoDemo('Carga voltou ao normal', 'Íntegra', (atual) => ({
+      ...atual,
+      telemetria: { ...original.telemetria, timestamp: new Date().toISOString() },
+      statusLacre: 'BLOQUEADO',
+      situacao: 'Íntegra',
+      alerta: null,
+      temperaturas: [...atual.temperaturas, original.telemetria.temperatura],
+      umidades: [...atual.umidades, original.telemetria.umidade],
+    }));
   }
 
   async function loadCargaData(id: string, signal: AbortSignal) {
@@ -200,6 +332,14 @@ export default function DashboardIntegridade() {
         if (!ativo) return;
         const cadeias = Object.fromEntries(resultados);
         setDemoCadeias(cadeias);
+        setDemoRuntime(Object.fromEntries(demoCargas.map(({ carga: item, telemetria }) => [item.id, {
+          telemetria: { ...telemetria, timestamp: new Date().toISOString() },
+          statusLacre: item.statusLacre,
+          situacao: 'Íntegra' as Situacao,
+          alerta: null,
+          temperaturas: [telemetria.temperatura],
+          umidades: [telemetria.umidade],
+        }])));
         setLogs(converterLogs(cadeias[demoCargas[0].carga.id]));
         void verificarCadeia(cadeias[demoCargas[0].carga.id]).then(setChainResult);
       });
@@ -265,9 +405,16 @@ export default function DashboardIntegridade() {
     if (!carga) return;
     const action = doorLocked ? 'ABRIR' : 'BLOQUEAR';
     if (!connected || !apiUrl) {
-      setCargas((atual) => atual.map((item) => item.id === selectedId
-        ? { ...item, statusLacre: action === 'ABRIR' ? 'ABERTO' : 'BLOQUEADO' }
-        : item));
+      await registrarEventoDemo(
+        action === 'ABRIR' ? 'Lacre aberto' : 'Lacre bloqueado',
+        action === 'ABRIR' ? 'Atenção' : 'Íntegra',
+        (atual) => ({
+          ...atual,
+          statusLacre: action === 'ABRIR' ? 'ABERTO' : 'BLOQUEADO',
+          situacao: action === 'ABRIR' ? 'Atenção' : 'Íntegra',
+          alerta: action === 'ABRIR' ? 'Atenção: o lacre está aberto.' : null,
+        }),
+      );
       return;
     }
     try {
@@ -327,18 +474,34 @@ export default function DashboardIntegridade() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '12px', borderTop: '1px solid #1e293b', paddingTop: '12px' }}>
               <div><span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Rota</span><strong>{carga.origem} ➔ {carga.destino}</strong></div>
               <div><span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Faixa segura</span><strong style={{ color: '#00f2fe' }}>{connected ? 'Dados da API' : demo.faixa}</strong></div>
-              <div><span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Integridade</span><strong style={{ color: chainResult?.integra === false ? '#f43f5e' : '#10b981' }}>{connected ? (chainResult?.integra ? 'Corrente íntegra ✓' : `Corrente violada a partir do registro ${chainResult?.primeiroInvalido ?? 1}`) : (chainResult?.integra ? 'Corrente íntegra ✓' : 'Verificando...')}</strong></div>
+              <div><span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Situação da carga</span><strong style={{ color: situacaoCor }}>{situacao ?? 'Verificando...'}</strong></div>
               <div><span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Atualização</span><strong>{currentTime || '00/00/0000 00:00:00'}</strong></div>
             </div>
             <button onClick={() => void toggleSeal()} style={{ marginTop: '20px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', padding: '10px 16px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
               {doorLocked ? 'Abrir lacre' : 'Bloquear lacre'}
             </button>
+            {!connected && (
+              <div style={{ marginTop: '20px', padding: '14px', border: '1px solid #334155', borderRadius: '8px' }}>
+                <strong style={{ display: 'block', marginBottom: '10px', color: '#fff' }}>Simular um problema</strong>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <button onClick={() => void simularRefrigerador()} style={{ ...buttonStyle, borderColor: '#fbbf24' }}>Refrigerador falhou</button>
+                  <button onClick={() => void simularLacreViolado()} style={{ ...buttonStyle, borderColor: '#f43f5e' }}>Lacre violado</button>
+                  <button onClick={() => void simularDesvio()} style={{ ...buttonStyle, borderColor: '#f43f5e' }}>Desvio de rota</button>
+                  <button onClick={() => void voltarAoNormal()} style={{ ...buttonStyle, borderColor: '#10b981' }}>Voltar ao normal</button>
+                </div>
+              </div>
+            )}
+            {!connected && runtime?.alerta && (
+              <div style={{ marginTop: '14px', padding: '12px', color: '#fecaca', background: '#450a0a', border: '1px solid #f43f5e', borderRadius: '6px', fontWeight: 'bold' }}>
+                {runtime.alerta}
+              </div>
+            )}
           </div>
           <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <span style={{ color: '#64748b', fontSize: '11px', fontFamily: 'monospace' }}>TELEMETRIA {loading ? '· CARREGANDO' : '· ÚLTIMA LEITURA'}</span>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginTop: '24px' }}>
-              <div><span style={{ color: '#94a3b8', fontSize: '11px' }}>Temperatura</span><strong style={{ display: 'block', color: '#fff', fontSize: '32px' }}>{telemetria.temperatura.toFixed(1)} °C</strong><MiniGraph data={[4.1, 4.2, telemetria.temperatura]} color="#10b981" /></div>
-              <div><span style={{ color: '#94a3b8', fontSize: '11px' }}>Umidade</span><strong style={{ display: 'block', color: '#fff', fontSize: '32px' }}>{telemetria.umidade.toFixed(1)} %</strong><MiniGraph data={[46, 45, telemetria.umidade]} color="#00f2fe" /></div>
+              <div><span style={{ color: '#94a3b8', fontSize: '11px' }}>Temperatura</span><strong style={{ display: 'block', color: '#fff', fontSize: '32px' }}>{telemetria.temperatura.toFixed(1)} °C</strong><MiniGraph data={connected ? [telemetria.temperatura] : runtime?.temperaturas ?? [telemetria.temperatura]} color="#10b981" safeMin={selectedId === 'DEMO-001' ? 2 : selectedId === 'DEMO-002' ? 0 : undefined} safeMax={selectedId === 'DEMO-001' ? 8 : selectedId === 'DEMO-002' ? 4 : undefined} /></div>
+              <div><span style={{ color: '#94a3b8', fontSize: '11px' }}>Umidade</span><strong style={{ display: 'block', color: '#fff', fontSize: '32px' }}>{telemetria.umidade.toFixed(1)} %</strong><MiniGraph data={connected ? [telemetria.umidade] : runtime?.umidades ?? [telemetria.umidade]} color="#00f2fe" safeMax={!connected && selectedId === 'DEMO-003' ? 60 : undefined} /></div>
             </div>
             <div style={{ marginTop: '20px', color: '#00f2fe', fontFamily: 'monospace', fontSize: '12px' }}>GPS: {telemetria.latitude.toFixed(4)}, {telemetria.longitude.toFixed(4)}</div>
           </div>
@@ -352,7 +515,7 @@ export default function DashboardIntegridade() {
           <div style={{ maxHeight: '260px', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
               <thead><tr style={{ borderBottom: '1px solid #1e293b', color: '#64748b', fontFamily: 'monospace', fontSize: '10px' }}><th style={{ padding: '10px' }}>Data e hora</th><th style={{ padding: '10px' }}>Evento</th><th style={{ padding: '10px' }}>Situação</th><th style={{ padding: '10px' }}>Hash</th></tr></thead>
-              <tbody>{logs.map((log) => <tr key={log.id} style={{ borderBottom: '1px solid #1e293b' }}><td style={{ padding: '10px', fontFamily: 'monospace', color: '#94a3b8' }}>{log.timestamp}</td><td style={{ padding: '10px', color: '#fff', fontWeight: 'bold' }}>{log.eventType}</td><td style={{ padding: '10px', color: log.status === 'NORMAL' ? '#34d399' : '#fbbf24' }}>{log.status}</td><td style={{ padding: '10px', fontFamily: 'monospace', color: '#00f2fe', fontSize: '11px' }}>{log.hash}</td></tr>)}</tbody>
+              <tbody>{logs.map((log) => <tr key={log.id} style={{ borderBottom: '1px solid #1e293b' }}><td style={{ padding: '10px', fontFamily: 'monospace', color: '#94a3b8' }}>{log.timestamp}</td><td style={{ padding: '10px', color: '#fff', fontWeight: 'bold' }}>{log.eventType}</td><td style={{ padding: '10px', color: log.status === 'Em risco' ? '#f43f5e' : log.status === 'Atenção' ? '#fbbf24' : '#34d399' }}>{log.status}</td><td style={{ padding: '10px', fontFamily: 'monospace', color: '#00f2fe', fontSize: '11px' }}>{log.hash}</td></tr>)}</tbody>
             </table>
           </div>
         </section>
