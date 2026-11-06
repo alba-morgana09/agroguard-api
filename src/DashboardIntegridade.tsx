@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   adulterarRegistro,
   criarRegistro,
@@ -63,6 +63,7 @@ interface DemoRuntime {
   alerta: string | null;
   temperaturas: number[];
   umidades: number[];
+  progressoRota: number;
 }
 
 const demoCargas: DemoCarga[] = [
@@ -191,6 +192,13 @@ function MiniGraph({
       </svg>
     </div>
   );
+}
+
+function Historico({ children }: { children: ReactNode }) {
+  return <details style={{ marginBottom: '20px', background: '#0f172a', border: '1px solid #334155', borderRadius: '8px', padding: '14px' }}>
+    <summary style={{ cursor: 'pointer', color: '#f8fafc', fontWeight: 'bold' }}>O que estou vendo?</summary>
+    <div style={{ display: 'grid', gap: '8px', marginTop: '12px', color: '#cbd5e1', fontSize: '13px', lineHeight: 1.45 }}>{children}</div>
+  </details>;
 }
 
 const buttonStyle = {
@@ -362,14 +370,42 @@ export default function DashboardIntegridade() {
           statusLacre: item.statusLacre,
           situacao: 'Íntegra' as Situacao,
           alerta: null,
-          temperaturas: [telemetria.temperatura],
-          umidades: [telemetria.umidade],
+          temperaturas: Array(20).fill(telemetria.temperatura),
+          umidades: Array(20).fill(telemetria.umidade),
+          progressoRota: 12,
         }])));
         setLogs(converterLogs([...cadeias[demoCargas[0].carga.id]].reverse(), true));
         void verificarCadeia(cadeias[demoCargas[0].carga.id]).then(setChainResult);
       });
     return () => { ativo = false; };
   }, []);
+
+  useEffect(() => {
+    if (connected || !runtime) return;
+    const atualizarTelemetria = () => {
+      if (document.visibilityState !== 'visible') return;
+      const temperatura = Math.max(0, runtime.telemetria.temperatura + (Math.random() - 0.5) * 0.2);
+      const umidade = Math.min(100, Math.max(0, runtime.telemetria.umidade + (Math.random() - 0.5) * 1.2));
+      const proximaTelemetria = { ...runtime.telemetria, temperatura, umidade, timestamp: new Date().toISOString() };
+      setDemoRuntime((atual) => {
+        const estado = atual[selectedId];
+        if (!estado) return atual;
+        return {
+          ...atual,
+          [selectedId]: {
+            ...estado,
+            telemetria: proximaTelemetria,
+            temperaturas: [...estado.temperaturas, temperatura].slice(-30),
+            umidades: [...estado.umidades, umidade].slice(-30),
+            progressoRota: Math.min(100, estado.progressoRota + 0.3),
+          },
+        };
+      });
+      setTelemetria(proximaTelemetria);
+    };
+    const interval = window.setInterval(atualizarTelemetria, 3000);
+    return () => window.clearInterval(interval);
+  }, [connected, runtime, selectedId]);
 
   useEffect(() => {
     setCurrentTime(formatarData(new Date().toISOString()));
@@ -491,16 +527,27 @@ export default function DashboardIntegridade() {
           </label>
         </div>
 
-        <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+        <p style={{ margin: '0 0 16px', color: '#cbd5e1', fontSize: '15px', lineHeight: 1.5 }}>
+          Imagine um caminhão levando vacinas. Se a temperatura passar do limite ou o lacre for aberto, este painel avisa e guarda tudo num caderno que não pode ser alterado sem deixar rastro.
+        </p>
+        <Historico>
+          <div><strong>Temperatura:</strong> mostra se a carga está quente ou fria demais.</div>
+          <div><strong>Lacre:</strong> indica se a porta está protegida, aberta ou violada.</div>
+          <div><strong>Rota:</strong> acompanha o caminho esperado entre a origem e o destino.</div>
+          <div><strong>Trilha de auditoria:</strong> registra o que aconteceu, na ordem em que aconteceu.</div>
+          <div><strong>Hash:</strong> é o código de cada registro; se alguém mudar uma linha, o painel percebe.</div>
+        </Historico>
+
+        <section className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
           <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '20px' }}>
             <span style={{ fontSize: '11px', color: '#00f2fe', fontFamily: 'monospace', background: '#082f49', padding: '3px 8px', borderRadius: '4px' }}>MONITORAMENTO DE CARGA</span>
             <h2 style={{ margin: '14px 0 4px', fontSize: '24px', color: '#fff', fontFamily: 'monospace' }}>{carga.id}</h2>
             <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#64748b' }}>{carga.descricao}</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '12px', borderTop: '1px solid #1e293b', paddingTop: '12px' }}>
-              <div><span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Rota</span><strong>{carga.origem} ➔ {carga.destino}</strong></div>
-              <div><span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Faixa segura</span><strong style={{ color: '#00f2fe' }}>{connected ? 'Dados da API' : demo.faixa}</strong></div>
-              <div><span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Situação da carga</span><strong style={{ color: situacaoCor }}>{situacao ?? 'Verificando...'}</strong></div>
-              <div><span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Atualização</span><strong>{currentTime || '00/00/0000 00:00:00'}</strong></div>
+              <div><span style={{ color: '#94a3b8', display: 'block', fontSize: '10px' }}>Rota</span><strong>{carga.origem} ➔ {carga.destino}</strong></div>
+              <div><span style={{ color: '#94a3b8', display: 'block', fontSize: '10px' }}>Faixa segura</span><strong style={{ color: '#00f2fe' }}>{connected ? 'Dados da API' : demo.faixa}</strong></div>
+              <div><span style={{ color: '#94a3b8', display: 'block', fontSize: '10px' }}>Situação da carga</span><strong style={{ color: situacaoCor }}>{situacao ?? 'Verificando...'}</strong></div>
+              <div><span style={{ color: '#94a3b8', display: 'block', fontSize: '10px' }}>Atualização</span><strong>{currentTime || '00/00/0000 00:00:00'}</strong></div>
             </div>
             <button onClick={() => void toggleSeal()} style={{ marginTop: '20px', background: '#1e293b', color: '#cbd5e1', border: '1px solid #334155', padding: '10px 16px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>
               {doorLocked ? 'Abrir lacre' : 'Bloquear lacre'}
@@ -521,6 +568,19 @@ export default function DashboardIntegridade() {
                 {runtime.alerta}
               </div>
             )}
+            {!connected && (
+              <div style={{ marginTop: '18px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', fontSize: '12px', marginBottom: '6px' }}>
+                  <span>Progresso da rota</span><strong>{runtime?.progressoRota.toFixed(0)}%</strong>
+                </div>
+                <div style={{ height: '10px', background: '#1e293b', borderRadius: '999px', overflow: 'hidden' }}>
+                  <div className="route-progress" style={{ width: `${runtime?.progressoRota ?? 0}%`, height: '100%', background: '#00f2fe', borderRadius: '999px' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: '11px', marginTop: '5px' }}>
+                  <span>{carga.origem}</span><span>{carga.destino}</span>
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <span style={{ color: '#64748b', fontSize: '11px', fontFamily: 'monospace' }}>TELEMETRIA {loading ? '· CARREGANDO' : '· ÚLTIMA LEITURA'}</span>
@@ -532,7 +592,7 @@ export default function DashboardIntegridade() {
           </div>
         </section>
 
-        <section style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '20px' }}>
+        <section className="dashboard-grid" style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '12px', flexWrap: 'wrap' }}>
             <div><h3 style={{ margin: 0, fontSize: '14px', color: '#fff', textTransform: 'uppercase', fontFamily: 'monospace' }}>Log de eventos e auditoria</h3><span style={{ fontSize: '11px', color: '#64748b' }}>Hash SHA-256 encadeado</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
