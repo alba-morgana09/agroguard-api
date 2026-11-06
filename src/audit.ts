@@ -47,6 +47,16 @@ export async function gerarCadeia(eventos: EventoAuditoria[]): Promise<RegistroA
   return cadeia;
 }
 
+export function adulterarRegistro(
+  cadeia: RegistroAuditoria[],
+  indice: number,
+  novoEvento: string,
+): RegistroAuditoria[] {
+  return cadeia.map((registro, registroIndex) => (
+    registroIndex === indice ? { ...registro, evento: novoEvento } : registro
+  ));
+}
+
 export async function verificarCadeia(
   cadeia: RegistroAuditoria[],
 ): Promise<{ integra: boolean; primeiroInvalido: number | null }> {

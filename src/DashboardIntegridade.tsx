@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  adulterarRegistro,
   criarRegistro,
   gerarCadeia,
   verificarCadeia,
@@ -35,6 +36,7 @@ interface SecurityLog {
   status: string;
   hash: string;
   hashAnterior?: string;
+  chainIndex: number;
 }
 
 interface LogApi {
@@ -139,14 +141,15 @@ async function fetchApi<T>(path: string, signal: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-function converterLogs(logs: Array<RegistroAuditoria | LogApi>): SecurityLog[] {
-  return logs.map((log) => ({
+function converterLogs(logs: Array<RegistroAuditoria | LogApi>, invertido = false): SecurityLog[] {
+  return logs.map((log, index) => ({
     id: String(log.id),
     timestamp: formatarData(log.timestamp),
     eventType: log.evento,
     status: 'status' in log ? log.status : 'NORMAL',
     hash: log.hash,
     hashAnterior: log.hashAnterior,
+    chainIndex: invertido ? logs.length - index : index + 1,
   }));
 }
 
@@ -210,6 +213,7 @@ export default function DashboardIntegridade() {
   const [chainResult, setChainResult] = useState<{ integra: boolean; primeiroInvalido: number | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [demoCadeias, setDemoCadeias] = useState<Record<string, RegistroAuditoria[]>>({});
+  const [demoCadeiasOriginais, setDemoCadeiasOriginais] = useState<Record<string, RegistroAuditoria[]>>({});
   const [demoRuntime, setDemoRuntime] = useState<Record<string, DemoRuntime>>({});
 
   const carga = useMemo(
@@ -229,7 +233,7 @@ export default function DashboardIntegridade() {
     const cadeia = demoCadeias[selecionada.carga.id] ?? [];
     const estado = demoRuntime[selecionada.carga.id];
     setTelemetria(estado?.telemetria ?? { ...selecionada.telemetria, timestamp: new Date().toISOString() });
-    setLogs(converterLogs([...cadeia].reverse()));
+    setLogs(converterLogs([...cadeia].reverse(), true));
     setChainResult(await verificarCadeia(cadeia));
   }
 
@@ -255,8 +259,28 @@ export default function DashboardIntegridade() {
       ? { ...item, statusLacre: novoRuntime.statusLacre }
       : item));
     setTelemetria(novoRuntime.telemetria);
-    setLogs(converterLogs([registro, ...[...cadeiaAtual].reverse()]));
+    setLogs(converterLogs([registro, ...[...cadeiaAtual].reverse()], true));
     setChainResult(await verificarCadeia(novaCadeia));
+  }
+
+  async function adulterarRegistroDemo() {
+    if (connected) return;
+    const cadeia = demoCadeias[selectedId] ?? [];
+    if (cadeia.length < 2) return;
+    const indice = Math.floor(cadeia.length / 2);
+    const adulterada = adulterarRegistro(cadeia, indice, 'Sem ocorrências');
+    setDemoCadeias((atual) => ({ ...atual, [selectedId]: adulterada }));
+    setLogs(converterLogs([...adulterada].reverse(), true));
+    setChainResult(await verificarCadeia(adulterada));
+  }
+
+  async function restaurarRegistroDemo() {
+    if (connected) return;
+    const original = demoCadeiasOriginais[selectedId];
+    if (!original) return;
+    setDemoCadeias((atual) => ({ ...atual, [selectedId]: original }));
+    setLogs(converterLogs([...original].reverse(), true));
+    setChainResult(await verificarCadeia(original));
   }
 
   async function simularRefrigerador() {
@@ -332,6 +356,7 @@ export default function DashboardIntegridade() {
         if (!ativo) return;
         const cadeias = Object.fromEntries(resultados);
         setDemoCadeias(cadeias);
+        setDemoCadeiasOriginais(cadeias);
         setDemoRuntime(Object.fromEntries(demoCargas.map(({ carga: item, telemetria }) => [item.id, {
           telemetria: { ...telemetria, timestamp: new Date().toISOString() },
           statusLacre: item.statusLacre,
@@ -340,7 +365,7 @@ export default function DashboardIntegridade() {
           temperaturas: [telemetria.temperatura],
           umidades: [telemetria.umidade],
         }])));
-        setLogs(converterLogs(cadeias[demoCargas[0].carga.id]));
+        setLogs(converterLogs([...cadeias[demoCargas[0].carga.id]].reverse(), true));
         void verificarCadeia(cadeias[demoCargas[0].carga.id]).then(setChainResult);
       });
     return () => { ativo = false; };
@@ -510,12 +535,31 @@ export default function DashboardIntegridade() {
         <section style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '10px', padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '12px', flexWrap: 'wrap' }}>
             <div><h3 style={{ margin: 0, fontSize: '14px', color: '#fff', textTransform: 'uppercase', fontFamily: 'monospace' }}>Log de eventos e auditoria</h3><span style={{ fontSize: '11px', color: '#64748b' }}>Hash SHA-256 encadeado</span></div>
-            <span style={{ fontSize: '11px', color: chainResult?.integra ? '#34d399' : '#fb7185' }}>{chainResult?.integra ? 'Corrente íntegra ✓' : `Corrente violada a partir do registro ${chainResult?.primeiroInvalido ?? 1}`}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {!connected && (
+                <>
+                  <button onClick={() => void adulterarRegistroDemo()} style={{ ...buttonStyle, borderColor: '#f43f5e' }}>Adulterar um registro</button>
+                  <button onClick={() => void restaurarRegistroDemo()} style={{ ...buttonStyle, borderColor: '#10b981' }}>Restaurar registro</button>
+                </>
+              )}
+              <span style={{ fontSize: '11px', color: chainResult?.integra ? '#34d399' : '#fb7185' }}>{chainResult?.integra ? 'Corrente íntegra ✓' : `Corrente violada a partir do registro ${chainResult?.primeiroInvalido ?? 1}`}</span>
+            </div>
           </div>
+          {!connected && <p style={{ margin: '0 0 12px', color: '#94a3b8', fontSize: '11px' }}>Mudou uma linha? O código dela não bate mais, e todas as seguintes também ficam inválidas.</p>}
           <div style={{ maxHeight: '260px', overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12px' }}>
               <thead><tr style={{ borderBottom: '1px solid #1e293b', color: '#64748b', fontFamily: 'monospace', fontSize: '10px' }}><th style={{ padding: '10px' }}>Data e hora</th><th style={{ padding: '10px' }}>Evento</th><th style={{ padding: '10px' }}>Situação</th><th style={{ padding: '10px' }}>Hash</th></tr></thead>
-              <tbody>{logs.map((log) => <tr key={log.id} style={{ borderBottom: '1px solid #1e293b' }}><td style={{ padding: '10px', fontFamily: 'monospace', color: '#94a3b8' }}>{log.timestamp}</td><td style={{ padding: '10px', color: '#fff', fontWeight: 'bold' }}>{log.eventType}</td><td style={{ padding: '10px', color: log.status === 'Em risco' ? '#f43f5e' : log.status === 'Atenção' ? '#fbbf24' : '#34d399' }}>{log.status}</td><td style={{ padding: '10px', fontFamily: 'monospace', color: '#00f2fe', fontSize: '11px' }}>{log.hash}</td></tr>)}</tbody>
+              <tbody>{logs.map((log) => {
+                const invalida = !connected
+                  && chainResult?.integra === false
+                  && log.chainIndex >= (chainResult.primeiroInvalido ?? Number.MAX_SAFE_INTEGER);
+                return <tr key={log.id} style={{ borderBottom: '1px solid #1e293b', background: invalida ? '#450a0a' : 'transparent', outline: invalida ? '1px solid #7f1d1d' : undefined }}>
+                  <td style={{ padding: '10px', fontFamily: 'monospace', color: invalida ? '#fca5a5' : '#94a3b8' }}>{log.timestamp}</td>
+                  <td style={{ padding: '10px', color: invalida ? '#fecaca' : '#fff', fontWeight: 'bold' }}>{log.eventType}</td>
+                  <td style={{ padding: '10px', color: log.status === 'Em risco' ? '#f43f5e' : log.status === 'Atenção' ? '#fbbf24' : '#34d399' }}>{log.status}</td>
+                  <td style={{ padding: '10px', fontFamily: 'monospace', color: invalida ? '#fca5a5' : '#00f2fe', fontSize: '11px' }}>{log.hash}</td>
+                </tr>;
+              })}</tbody>
             </table>
           </div>
         </section>
