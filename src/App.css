@@ -173,6 +173,22 @@
     border: 5px solid transparent;
   }
 
+  .route-progress {
+    transition: width 0.8s ease;
+  }
+
+  @media (max-width: 700px) {
+    .dashboard-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .route-progress {
+      transition: none;
+    }
+  }
+
   &::before {
     left: 0;
     border-left-color: var(--border);
