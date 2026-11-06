@@ -4,7 +4,7 @@
 
 ## 📸 Demo
 
-![Painel do AgroGuard](./agroguard-preview.png)
+     ![Painel do AgroGuard em modo demonstração](./agroguard-preview.gif)
 
 👉 **[Acessar a demo no GitHub Pages](https://alba-morgana09.github.io/agroguard-api/)**
 
